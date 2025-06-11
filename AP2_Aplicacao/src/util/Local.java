@@ -1,14 +1,13 @@
 package util;
 
 public class Local {
-    private int idLocal; // Adicionado ID para o DAO
+    private int idLocal;
     private String cidade;
     private String bairro;
     private String rua;
     private int numero;
-    private String cep; // Alterado para String, pois CEPs podem ter hífens e zeros à esquerda
+    private String cep;
 
-    // Construtor completo
     public Local(int idLocal, String cidade, String bairro, String rua, int numero, String cep) {
         this.idLocal = idLocal;
         this.cidade = cidade;
@@ -18,7 +17,6 @@ public class Local {
         this.cep = cep;
     }
 
-    // Construtor sem ID (para quando o ID é gerado pelo DAO)
     public Local(String cidade, String bairro, String rua, int numero, String cep) {
         this.cidade = cidade;
         this.bairro = bairro;
@@ -27,11 +25,9 @@ public class Local {
         this.cep = cep;
     }
 
-    // Construtor padrão
     public Local() {
     }
 
-    // Getters e Setters
     public int getIdLocal() {
         return idLocal;
     }
