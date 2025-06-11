@@ -9,11 +9,10 @@ public class AvaliacaoAmbiente extends Avaliacao {
     private Cliente cliente;         // Relacionamento
 
     // Construtor para criar uma nova avaliação (ID gerado pelo DB)
-    public AvaliacaoAmbiente(float notaAmbiente, Restaurante restaurante, Cliente cliente) {
+    public AvaliacaoAmbiente(float notaAmbiente) {
         super(); // Chama o construtor da superclasse Avaliacao
         this.notaAmbiente = notaAmbiente;
-        this.restaurante = restaurante;
-        this.cliente = cliente;
+
     }
 
     // Construtor completo com ID (útil para carregar do DB)

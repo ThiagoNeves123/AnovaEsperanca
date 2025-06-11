@@ -1,86 +1,196 @@
 package dao;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Date;
 import java.util.ArrayList;
-import util.Classificacao; // Importa a classe Classificacao
 
-public class ClassificacaoDAO implements BaseDAO { // Implementa BaseDAO
+import util.Classificacao;
+import util.Restaurante;
+import util.Cliente;
+import bd.ConnectionFactory;
 
-    private static ArrayList<Classificacao> classificacoesDB = new ArrayList<>();
-    private static int nextIdClassificacao = 1; // Para simular auto_increment para Classificacao
-
-    // Nota: A classe Classificacao não tem um ID intrínseco.
-    // Para fins de DAO, vamos gerar um ID para ela aqui.
-    // Em um cenário real, talvez a Classificacao não seria salva diretamente,
-    // mas sim calculada a partir das avaliações existentes.
-    // Para manter a conformidade com BaseDAO, adicionaremos um ID aqui.
-
-    // A classe Classificacao precisa de um setId/getId para ser manipulável por um DAO.
-    // Se a Classificacao não tiver ID, o DAO não faz sentido para as operações de buscar/atualizar/excluir por ID.
-    // Para simplificar, vou assumir que você pode adicionar um idClassificacao na classe Classificacao
-    // ou que este DAO é mais conceitual e não fará CRUD completo com IDs de Classificacao.
+public class ClassificacaoDAO implements BaseDAO {
 
     @Override
     public void salvar(Object obj) {
         if (obj instanceof Classificacao) {
             Classificacao classificacao = (Classificacao) obj;
-            // Para Classificacao, precisaria de um setter de ID nela
-            // classificacao.setIdClassificacao(nextIdClassificacao++);
-            classificacoesDB.add(classificacao);
-            System.out.println("Classificação salva (simulada).");
+            String sql = "INSERT INTO classificacao_final (fk_restaurante, fk_cliente, nota_final, data_classificacao) VALUES (?, ?, ?, ?)";
+
+            try (Connection conn = ConnectionFactory.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
+
+                if (classificacao.getRestaurante() == null || classificacao.getRestaurante().getIdrestaurante() == 0) {
+                    throw new SQLException("Restaurante associado à Classificacao é nulo ou não tem ID. Salve o Restaurante primeiro.");
+                }
+                if (classificacao.getCliente() == null || classificacao.getCliente().getIdcliente() == 0) {
+                    throw new SQLException("Cliente associado à Classificacao é nulo ou não tem ID. Salve o Cliente primeiro.");
+                }
+
+                stmt.setInt(1, classificacao.getRestaurante().getIdrestaurante());
+                stmt.setInt(2, classificacao.getCliente().getIdcliente());
+                stmt.setFloat(3, classificacao.getNotaFinal());
+                stmt.setDate(4, classificacao.getDataClassificacao());
+
+                int affectedRows = stmt.executeUpdate();
+
+                if (affectedRows > 0) {
+                    try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                        if (generatedKeys.next()) {
+                            classificacao.setIdClassificacao(generatedKeys.getInt(1));
+                            System.out.println("Classificação salva (ID: " + classificacao.getIdClassificacao() + ")");
+                        } else {
+                            System.err.println("Falha ao obter o ID.");
+                        }
+                    }
+                } else {
+                    System.err.println("Nenhuma linha afetada ao salvar a Classificação final. Possível erro.");
+                }
+
+            } catch (SQLException e) {
+                System.err.println("Erro ao salvar: " + e.getMessage());
+                e.printStackTrace();
+            }
         } else {
-            System.out.println("Objeto não é uma instância de Classificacao. Não salvo.");
+            System.out.println("Objeto não é uma instância de Classificacao. Não salvo no DB.");
         }
     }
 
     @Override
     public Object buscarPorId(int id) {
-        System.out.println("Buscando classificação pelo ID: " + id);
-        // Para buscar Classificacao por ID, ela precisaria de um campo idClassificacao
-        // e um método getIdClassificacao().
-        // Como não há no Classificacao.java fornecido, este método seria mais complexo
-        // ou precisaria de alteração em Classificacao.java.
-        // Simulando apenas...
-        if (!classificacoesDB.isEmpty() && id > 0 && id <= classificacoesDB.size()) {
-            System.out.println("Classificação encontrada (simulada).");
-            return classificacoesDB.get(id - 1); // Apenas um exemplo simples de busca
+        String sql = "SELECT id_classificacao, fk_restaurante, fk_cliente, nota_final, data_classificacao FROM classificacao_final WHERE id_classificacao = ?";
+        Classificacao classificacao = null;
+        try (Connection conn = ConnectionFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    int fkRestaurante = rs.getInt("fk_restaurante");
+                    int fkCliente = rs.getInt("fk_cliente");
+                    float notaFinal = rs.getFloat("nota_final");
+                    Date dataClassificacao = rs.getDate("data_classificacao");
+
+                    RestauranteDAO restauranteDAO = new RestauranteDAO();
+                    Restaurante restaurante = (Restaurante) restauranteDAO.buscarPorId(fkRestaurante);
+
+                    ClienteDAO clienteDAO = new ClienteDAO();
+                    Cliente cliente = (Cliente) clienteDAO.buscarPorId(fkCliente);
+
+                    classificacao = new Classificacao(
+                            rs.getInt("id_classificacao"),
+                            restaurante,
+                            cliente,
+                            notaFinal,
+                            dataClassificacao
+                    );
+                    System.out.println("Classificação encontrada: ID " + classificacao.getIdClassificacao() + ", Nota Final: " + classificacao.getNotaFinal());
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Erro ao buscar: " + e.getMessage());
+            e.printStackTrace();
         }
-        System.out.println("Classificação com ID " + id + " não encontrada.");
-        return null;
+        return classificacao;
     }
 
     @Override
     public ArrayList<Object> listarTodosLazyLoading() {
-        System.out.println("Listando todas as classificações (Lazy Loading)...");
-        ArrayList<Object> listaClassificacoes = new ArrayList<>();
-        for (Classificacao classificacao : classificacoesDB) {
-            listaClassificacoes.add(classificacao);
-        }
-        System.out.println("Total de classificações listadas: " + listaClassificacoes.size());
-        return listaClassificacoes;
+        return listarTodosEagerLoading();
     }
 
     @Override
     public ArrayList<Object> listarTodosEagerLoading() {
-        System.out.println("Listando todas as classificações (Eager Loading)...");
-        return listarTodosLazyLoading();
+        ArrayList<Object> classificacoes = new ArrayList<>();
+        String sql = "SELECT id_classificacao, fk_restaurante, fk_cliente, nota_final, data_classificacao FROM classificacao_final";
+
+        try (Connection conn = ConnectionFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                int fkRestaurante = rs.getInt("fk_restaurante");
+                int fkCliente = rs.getInt("fk_cliente");
+                float notaFinal = rs.getFloat("nota_final");
+                Date dataClassificacao = rs.getDate("data_classificacao");
+
+                RestauranteDAO restauranteDAO = new RestauranteDAO();
+                Restaurante restaurante = (Restaurante) restauranteDAO.buscarPorId(fkRestaurante);
+
+                ClienteDAO clienteDAO = new ClienteDAO();
+                Cliente cliente = (Cliente) clienteDAO.buscarPorId(fkCliente);
+
+                Classificacao classificacao = new Classificacao(
+                        rs.getInt("id_classificacao"),
+                        restaurante,
+                        cliente,
+                        notaFinal,
+                        dataClassificacao
+                );
+                classificacoes.add(classificacao);
+            }
+        } catch (SQLException e) {
+            System.err.println("Erro ao listar: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return classificacoes;
     }
 
     @Override
     public void atualizar(Object obj) {
         if (obj instanceof Classificacao) {
-            Classificacao classificacaoAtualizada = (Classificacao) obj;
-            // Para atualizar por ID, Classificacao precisaria de um campo de ID.
-            // Aqui, apenas um exemplo de atualização sem ID específico.
-            System.out.println("Atualizando classificação (simulada).");
+            Classificacao classificacao = (Classificacao) obj;
+            String sql = "UPDATE classificacao_final SET fk_restaurante = ?, fk_cliente = ?, nota_final = ?, data_classificacao = ? WHERE id_classificacao = ?";
+
+            try (Connection conn = ConnectionFactory.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+                if (classificacao.getRestaurante() == null || classificacao.getRestaurante().getIdrestaurante() == 0) {
+                    throw new SQLException("Restaurante associado à Classificacao é nulo ou não tem ID.");
+                }
+                if (classificacao.getCliente() == null || classificacao.getCliente().getIdcliente() == 0) {
+                    throw new SQLException("Cliente associado à Classificacao é nulo ou não tem ID.");
+                }
+
+                stmt.setInt(1, classificacao.getRestaurante().getIdrestaurante());
+                stmt.setInt(2, classificacao.getCliente().getIdcliente());
+                stmt.setFloat(3, classificacao.getNotaFinal());
+                stmt.setDate(4, classificacao.getDataClassificacao());
+                stmt.setInt(5, classificacao.getIdClassificacao());
+
+                int affectedRows = stmt.executeUpdate();
+                if (affectedRows > 0) {
+                    System.out.println("Classificação final atualizada (ID: " + classificacao.getIdClassificacao() + ")");
+                } else {
+                    System.err.println("Nenhuma linha afetada ao atualizar a Classificação final. Classificação não encontrada ou dados iguais.");
+                }
+            } catch (SQLException e) {
+                System.err.println("Erro ao atualizar: " + e.getMessage());
+                e.printStackTrace();
+            }
         } else {
-            System.out.println("Objeto não é uma instância de Classificacao. Não atualizado.");
+            System.out.println("Objeto não é uma instância de Classificacao. Não atualizado no DB.");
         }
     }
 
     @Override
     public void excluir(int id) {
-        System.out.println("Tentando excluir classificação pelo ID: " + id);
-        // Excluir por ID também exigiria um campo ID em Classificacao.
-        System.out.println("Exclusão de classificação (simulada) para ID: " + id);
+        String sql = "DELETE FROM classificacao_final WHERE id_classificacao = ?";
+        try (Connection conn = ConnectionFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            int affectedRows = stmt.executeUpdate();
+            if (affectedRows > 0) {
+                System.out.println("Classificação final excluída (ID: " + id + ")");
+            } else {
+                System.err.println("Nenhuma linha afetada ao excluir a Classificação final. Classificação não encontrada.");
+            }
+        } catch (SQLException e) {
+            System.err.println("Erro ao excluir: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

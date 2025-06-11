@@ -1,4 +1,4 @@
-package bd; // <--- Certifique-se de que este é o pacote correto da sua ConnectionFactory
+package bd;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -6,15 +6,13 @@ import java.sql.SQLException;
 
 public class ConnectionFactory {
 
-    // Método principal para obter a conexão
     public static Connection getConnection() throws SQLException {
         String sgbd = "mysql";
         String endereco = "localhost";
-        String bd = "restaurante_avaliacao_db"; // <--- Verifique se este nome está correto e o DB existe
+        String bd = "restaurante_avaliacao_db";
         String usuario = "root";
-        String senha = "Thiago150798"; // <--- Verifique se esta é a senha correta do seu MySQL
+        String senha = "Thiago150798";
 
-        // Carrega o driver JDBC (boa prática, especialmente para drivers mais antigos)
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
         } catch (ClassNotFoundException e) {
@@ -27,7 +25,6 @@ public class ConnectionFactory {
         return connection;
     }
 
-    // Método para fechar a conexão, para ser usado com try-with-resources ou manualmente
     public static void closeConnection(Connection conn) {
         if (conn != null) {
             try {
@@ -37,8 +34,4 @@ public class ConnectionFactory {
             }
         }
     }
-
-    // O método 'recuperaConexao' original pode ser removido ou alterado para chamar 'getConnection'
-    // Ex: public Connection recuperaConexao() { return getConnection(); }
-    // Mas é melhor removê-lo para evitar confusão.
 }

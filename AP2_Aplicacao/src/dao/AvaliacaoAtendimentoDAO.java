@@ -1,86 +1,186 @@
 package dao;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
-import util.AvaliacaoAtendimento; // Importa a classe de entidade
 
-public class AvaliacaoAtendimentoDAO implements BaseDAO { // CORRIGIDO: Implementa BaseDAO
+import util.AvaliacaoAtendimento;
+import util.Restaurante;
+import util.Cliente;
+import bd.ConnectionFactory;
 
-    // Simula o banco de dados em memória
-    private static ArrayList<AvaliacaoAtendimento> avaliacoesAtendimentoDB = new ArrayList<>();
-    private static int nextIdAvaliacaoAtendimento = 1; // Para simular auto_increment
+public class AvaliacaoAtendimentoDAO implements BaseDAO {
 
     @Override
     public void salvar(Object obj) {
         if (obj instanceof AvaliacaoAtendimento) {
-            AvaliacaoAtendimento avaliacaoAtendimento = (AvaliacaoAtendimento) obj;
-            // Simula o auto_increment do ID
-            avaliacaoAtendimento.setIdAvaliacao(nextIdAvaliacaoAtendimento++); // Usa setIdAvaliacao da superclasse Avaliacao
-            avaliacoesAtendimentoDB.add(avaliacaoAtendimento);
-            System.out.println("Avaliação de Atendimento salva (ID: " + avaliacaoAtendimento.getIdAvaliacao() + ", Nota: " + avaliacaoAtendimento.getNotaAtendimento() + ")");
+            AvaliacaoAtendimento avaliacao = (AvaliacaoAtendimento) obj;
+            String sql = "INSERT INTO avaliacao_atendimento (nota_atendimento, fk_restaurante, fk_cliente) VALUES (?, ?, ?)";
+
+            try (Connection conn = ConnectionFactory.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
+
+                stmt.setFloat(1, avaliacao.getNotaAtendimento());
+                if (avaliacao.getRestaurante() == null || avaliacao.getRestaurante().getIdrestaurante() == 0) {
+                    throw new SQLException("O restaurante ligado à avaliação é nulo ou o ID não é válido .");
+                }
+                if (avaliacao.getCliente() == null || avaliacao.getCliente().getIdcliente() == 0) {
+                    throw new SQLException("O cliente ligado à avaliação é nulo ou o ID não é válido.");
+                }
+                stmt.setInt(2, avaliacao.getRestaurante().getIdrestaurante());
+                stmt.setInt(3, avaliacao.getCliente().getIdcliente());
+
+                int affectedRows = stmt.executeUpdate();
+
+                if (affectedRows > 0) {
+                    try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                        if (generatedKeys.next()) {
+                            avaliacao.setIdAvaliacao(generatedKeys.getInt(1));
+                            System.out.println("Avaliação de Atendimento salva com sucesso no DB (ID: " + avaliacao.getIdAvaliacao() + ")");
+                        } else {
+                            System.err.println("Falha ao obter o ID gerado para a Avaliação de Atendimento.");
+                        }
+                    }
+                } else {
+                    System.err.println("Nenhuma linha afetada ao salvar a Avaliação de Atendimento. Possível erro.");
+                }
+
+            } catch (SQLException e) {
+                System.err.println("Erro ao salvar Avaliação de Atendimento no banco de dados: " + e.getMessage());
+                e.printStackTrace();
+            }
         } else {
-            System.out.println("Objeto não é uma instância de AvaliacaoAtendimento. Não salvo.");
+            System.out.println("Objeto não é uma instância de AvaliacaoAtendimento. Não salvo no DB.");
         }
     }
 
     @Override
     public Object buscarPorId(int id) {
-        System.out.println("Buscando avaliação de atendimento pelo ID: " + id);
-        for (AvaliacaoAtendimento avaliacao : avaliacoesAtendimentoDB) {
-            if (avaliacao.getIdAvaliacao() == id) { // Usa getIdAvaliacao
-                System.out.println("Avaliação de Atendimento encontrada: " + avaliacao.getNotaAtendimento());
-                return avaliacao;
+        String sql = "SELECT id_avaliacao_atendimento, nota_atendimento, fk_restaurante, fk_cliente FROM avaliacao_atendimento WHERE id_avaliacao_atendimento = ?";
+        AvaliacaoAtendimento avaliacao = null;
+        try (Connection conn = ConnectionFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    int idRestaurante = rs.getInt("fk_restaurante");
+                    int idCliente = rs.getInt("fk_cliente");
+
+                    RestauranteDAO restauranteDAO = new RestauranteDAO();
+                    ClienteDAO clienteDAO = new ClienteDAO();
+
+                    Restaurante restaurante = (Restaurante) restauranteDAO.buscarPorId(idRestaurante);
+                    Cliente cliente = (Cliente) clienteDAO.buscarPorId(idCliente);
+
+                    avaliacao = new AvaliacaoAtendimento(
+                            rs.getInt("id_avaliacao_atendimento"),
+                            rs.getFloat("nota_atendimento"),
+                            restaurante,
+                            cliente
+                    );
+                    System.out.println("Avaliação encontrada: ID " + avaliacao.getIdAvaliacao());
+                }
             }
+        } catch (SQLException e) {
+            System.err.println("Erro: " + e.getMessage());
+            e.printStackTrace();
         }
-        System.out.println("Avaliação de Atendimento com ID " + id + " não encontrada.");
-        return null;
+        return avaliacao;
     }
 
     @Override
     public ArrayList<Object> listarTodosLazyLoading() {
-        System.out.println("Listando todas as avaliações de atendimento (Lazy Loading)...");
-        ArrayList<Object> listaAvaliacoes = new ArrayList<>();
-        for (AvaliacaoAtendimento avaliacao : avaliacoesAtendimentoDB) {
-            listaAvaliacoes.add(avaliacao);
-        }
-        System.out.println("Total de avaliações de atendimento listadas: " + listaAvaliacoes.size());
-        return listaAvaliacoes;
+        return listarTodosEagerLoading();
     }
 
     @Override
     public ArrayList<Object> listarTodosEagerLoading() {
-        System.out.println("Listando todas as avaliações de atendimento (Eager Loading)...");
-        return listarTodosLazyLoading(); // Reutiliza para este exemplo simples
+        ArrayList<Object> avaliacoes = new ArrayList<>();
+        String sql = "SELECT id_avaliacao_atendimento, nota_atendimento, fk_restaurante, fk_cliente FROM avaliacao_atendimento";
+
+        try (Connection conn = ConnectionFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                int idRestaurante = rs.getInt("fk_restaurante");
+                int idCliente = rs.getInt("fk_cliente");
+
+                RestauranteDAO restauranteDAO = new RestauranteDAO();
+                ClienteDAO clienteDAO = new ClienteDAO();
+
+                Restaurante restaurante = (Restaurante) restauranteDAO.buscarPorId(idRestaurante);
+                Cliente cliente = (Cliente) clienteDAO.buscarPorId(idCliente);
+
+                AvaliacaoAtendimento avaliacao = new AvaliacaoAtendimento(
+                        rs.getInt("id_avaliacao_atendimento"),
+                        rs.getFloat("nota_atendimento"),
+                        restaurante,
+                        cliente
+                );
+                avaliacoes.add(avaliacao);
+            }
+        } catch (SQLException e) {
+            System.err.println("Erro: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return avaliacoes;
     }
 
     @Override
     public void atualizar(Object obj) {
         if (obj instanceof AvaliacaoAtendimento) {
-            AvaliacaoAtendimento avaliacaoAtualizada = (AvaliacaoAtendimento) obj;
-            boolean encontrado = false;
-            for (int i = 0; i < avaliacoesAtendimentoDB.size(); i++) {
-                if (avaliacoesAtendimentoDB.get(i).getIdAvaliacao() == avaliacaoAtualizada.getIdAvaliacao()) {
-                    avaliacoesAtendimentoDB.set(i, avaliacaoAtualizada);
-                    encontrado = true;
-                    System.out.println("Avaliação de Atendimento atualizada (ID: " + avaliacaoAtualizada.getIdAvaliacao() + ", Nova Nota: " + avaliacaoAtualizada.getNotaAtendimento() + ")");
-                    break;
+            AvaliacaoAtendimento avaliacao = (AvaliacaoAtendimento) obj;
+            String sql = "UPDATE avaliacao_atendimento SET nota_atendimento = ?, fk_restaurante = ?, fk_cliente = ? WHERE id_avaliacao_atendimento = ?";
+
+            try (Connection conn = ConnectionFactory.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+                stmt.setFloat(1, avaliacao.getNotaAtendimento());
+                if (avaliacao.getRestaurante() == null || avaliacao.getRestaurante().getIdrestaurante() == 0) {
+                    throw new SQLException("O restaurante ligado à avaliação é nulo ou o ID não é válido.");
                 }
-            }
-            if (!encontrado) {
-                System.out.println("Avaliação de Atendimento com ID " + avaliacaoAtualizada.getIdAvaliacao() + " não encontrada para atualização.");
+                if (avaliacao.getCliente() == null || avaliacao.getCliente().getIdcliente() == 0) {
+                    throw new SQLException("O cliente ligado à avaliação é nulo ou o ID não é válido.");
+                }
+                stmt.setInt(2, avaliacao.getRestaurante().getIdrestaurante());
+                stmt.setInt(3, avaliacao.getCliente().getIdcliente());
+                stmt.setInt(4, avaliacao.getIdAvaliacao());
+
+                int affectedRows = stmt.executeUpdate();
+                if (affectedRows > 0) {
+                    System.out.println("Avaliação de Atendimento " + avaliacao.getIdAvaliacao() + " atualizada.");
+                } else {
+                    System.out.println("Avaliação de Atendimento " + avaliacao.getIdAvaliacao() + " não encontrada.");
+                }
+            } catch (SQLException e) {
+                System.err.println("Erro ao atualizar: " + e.getMessage());
+                e.printStackTrace();
             }
         } else {
-            System.out.println("Objeto não é uma instância de AvaliacaoAtendimento. Não atualizado.");
+            System.out.println("Não atualizado.");
         }
     }
 
     @Override
     public void excluir(int id) {
-        System.out.println("Tentando excluir avaliação de atendimento pelo ID: " + id);
-        boolean removido = avaliacoesAtendimentoDB.removeIf(avaliacao -> avaliacao.getIdAvaliacao() == id);
-        if (removido) {
-            System.out.println("Avaliação de Atendimento com ID " + id + " excluída com sucesso.");
-        } else {
-            System.out.println("Avaliação de Atendimento com ID " + id + " não encontrada para exclusão.");
+        String sql = "DELETE FROM avaliacao_atendimento WHERE id_avaliacao_atendimento = ?";
+        try (Connection conn = ConnectionFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, id);
+            int affectedRows = stmt.executeUpdate();
+            if (affectedRows > 0) {
+                System.out.println("Avaliação de Atendimento " + id + " excluída.");
+            } else {
+                System.out.println("Avaliação de Atendimento " + id + " não encontrada.");
+            }
+        } catch (SQLException e) {
+            System.err.println("Erro ao excluir Avaliação: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }
