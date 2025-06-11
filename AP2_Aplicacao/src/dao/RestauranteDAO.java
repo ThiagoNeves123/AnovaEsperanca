@@ -4,7 +4,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Date; // Importar java.sql.Date
 import java.util.ArrayList;
+
 import util.Restaurante;
 import util.Local; // Importa a classe Local
 import bd.ConnectionFactory;
@@ -27,9 +29,10 @@ public class RestauranteDAO implements BaseDAO {
                 if (restaurante.getLocal() != null && restaurante.getLocal().getIdLocal() != 0) {
                     stmt.setInt(2, restaurante.getLocal().getIdLocal());
                 } else {
+                    // Lançar uma exceção ou lidar com o erro de forma apropriada
                     throw new SQLException("Local associado ao restaurante é nulo ou não tem ID. Salve o Local primeiro.");
                 }
-                stmt.setDate(3, restaurante.getDatasql());
+                stmt.setDate(3, restaurante.getDatasql()); // Usa o java.sql.Date
 
                 int affectedRows = stmt.executeUpdate();
 
@@ -37,17 +40,17 @@ public class RestauranteDAO implements BaseDAO {
                     try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
                         if (generatedKeys.next()) {
                             restaurante.setIdrestaurante(generatedKeys.getInt(1));
-                            System.out.println("Restaurante salvo com sucesso no DB (ID: " + restaurante.getIdrestaurante() + ", Nome: " + restaurante.getNome() + ")");
+                            System.out.println("Restaurante salvo com sucesso no DB (ID: " + restaurante.getIdrestaurante() + ")");
                         } else {
-                            System.err.println("Falha ao obter o ID gerado para o restaurante.");
+                            System.err.println("Falha ao obter o ID gerado para o Restaurante.");
                         }
                     }
                 } else {
-                    System.err.println("Nenhuma linha afetada ao salvar o restaurante. Possível erro.");
+                    System.err.println("Nenhuma linha afetada ao salvar o Restaurante. Possível erro.");
                 }
 
             } catch (SQLException e) {
-                System.err.println("Erro ao salvar restaurante no banco de dados: " + e.getMessage());
+                System.err.println("Erro ao salvar Restaurante no banco de dados: " + e.getMessage());
                 e.printStackTrace();
             }
         } else {
@@ -55,89 +58,59 @@ public class RestauranteDAO implements BaseDAO {
         }
     }
 
-    // --- Métodos buscarPorId, listarTodosLazyLoading, listarTodosEagerLoading, atualizar, excluir ---
-    // Para Restaurante, o Eager Loading será importante para carregar o objeto Local associado.
-
     @Override
     public Object buscarPorId(int id) {
-        String sql = "SELECT r.id_restaurante, r.nome, r.data_criacao, " +
-                "l.id_local, l.cidade, l.bairro, l.rua, l.numero, l.cep " +
-                "FROM restaurante r JOIN local_restaurante l ON r.id_local = l.id_local WHERE r.id_restaurante = ?";
+        String sql = "SELECT id_restaurante, nome, id_local, data_criacao FROM restaurante WHERE id_restaurante = ?";
+        Restaurante restaurante = null;
         try (Connection conn = ConnectionFactory.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
+
             stmt.setInt(1, id);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    Local local = new Local(
-                            rs.getInt("id_local"),
-                            rs.getString("cidade"),
-                            rs.getString("bairro"),
-                            rs.getString("rua"),
-                            rs.getInt("numero"),
-                            rs.getString("cep")
-                    );
-                    Restaurante restaurante = new Restaurante(
+                    int idLocal = rs.getInt("id_local");
+
+                    // Instancia LocalDAO para buscar o objeto Local relacionado
+                    LocalDAO localDAO = new LocalDAO();
+                    Local local = (Local) localDAO.buscarPorId(idLocal);
+
+                    restaurante = new Restaurante(
                             rs.getInt("id_restaurante"),
                             rs.getString("nome"),
-                            local, // Associa o objeto Local recuperado
-                            rs.getDate("data_criacao")
+                            local, // Atribui o objeto Local
+                            rs.getDate("data_criacao") // Obtém a data
                     );
-                    System.out.println("Restaurante encontrado (ID: " + restaurante.getIdrestaurante() + ")");
-                    return restaurante;
+                    System.out.println("Restaurante encontrado: ID " + restaurante.getIdrestaurante() + ", Nome: " + restaurante.getNome());
                 }
             }
         } catch (SQLException e) {
-            System.err.println("Erro ao buscar restaurante por ID: " + e.getMessage());
+            System.err.println("Erro ao buscar Restaurante por ID: " + e.getMessage());
             e.printStackTrace();
         }
-        return null;
+        return restaurante;
     }
 
     @Override
     public ArrayList<Object> listarTodosLazyLoading() {
-        ArrayList<Object> restaurantes = new ArrayList<>();
-        // Lazy loading: apenas carrega o ID do Local, não o objeto completo.
-        String sql = "SELECT id_restaurante, nome, id_local, data_criacao FROM restaurante";
-        try (Connection conn = ConnectionFactory.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-            while (rs.next()) {
-                // Aqui, apenas criamos um objeto Local com o ID, sem buscar os detalhes.
-                Local localDummy = new Local(rs.getInt("id_local"), null, null, null, 0, null);
-                Restaurante restaurante = new Restaurante(
-                        rs.getInt("id_restaurante"),
-                        rs.getString("nome"),
-                        localDummy,
-                        rs.getDate("data_criacao")
-                );
-                restaurantes.add(restaurante);
-            }
-        } catch (SQLException e) {
-            System.err.println("Erro ao listar restaurantes (Lazy): " + e.getMessage());
-            e.printStackTrace();
-        }
-        return restaurantes;
+        // Para este exemplo, faremos eager loading dos objetos relacionados (Local)
+        return listarTodosEagerLoading();
     }
 
     @Override
     public ArrayList<Object> listarTodosEagerLoading() {
         ArrayList<Object> restaurantes = new ArrayList<>();
-        // Eager loading: Carrega os dados do Local junto com o Restaurante.
-        String sql = "SELECT r.id_restaurante, r.nome, r.data_criacao, " +
-                "l.id_local, l.cidade, l.bairro, l.rua, l.numero, l.cep " +
-                "FROM restaurante r JOIN local_restaurante l ON r.id_local = l.id_local";
+        String sql = "SELECT id_restaurante, nome, id_local, data_criacao FROM restaurante";
+
         try (Connection conn = ConnectionFactory.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
+
             while (rs.next()) {
-                Local local = new Local(
-                        rs.getInt("id_local"),
-                        rs.getString("cidade"),
-                        rs.getString("bairro"),
-                        rs.getString("rua"),
-                        rs.getInt("numero"),
-                        rs.getString("cep")
-                );
+                int idLocal = rs.getInt("id_local");
+
+                LocalDAO localDAO = new LocalDAO();
+                Local local = (Local) localDAO.buscarPorId(idLocal);
+
                 Restaurante restaurante = new Restaurante(
                         rs.getInt("id_restaurante"),
                         rs.getString("nome"),
@@ -147,7 +120,7 @@ public class RestauranteDAO implements BaseDAO {
                 restaurantes.add(restaurante);
             }
         } catch (SQLException e) {
-            System.err.println("Erro ao listar restaurantes (Eager): " + e.getMessage());
+            System.err.println("Erro ao listar Restaurantes: " + e.getMessage());
             e.printStackTrace();
         }
         return restaurantes;
@@ -157,16 +130,16 @@ public class RestauranteDAO implements BaseDAO {
     public void atualizar(Object obj) {
         if (obj instanceof Restaurante) {
             Restaurante restaurante = (Restaurante) obj;
-            // Se o local também for atualizado, ele deve ser salvo pelo LocalDAO antes
             String sql = "UPDATE restaurante SET nome = ?, id_local = ?, data_criacao = ? WHERE id_restaurante = ?";
+
             try (Connection conn = ConnectionFactory.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
+
                 stmt.setString(1, restaurante.getNome());
-                if (restaurante.getLocal() != null && restaurante.getLocal().getIdLocal() != 0) {
-                    stmt.setInt(2, restaurante.getLocal().getIdLocal());
-                } else {
+                if (restaurante.getLocal() == null || restaurante.getLocal().getIdLocal() == 0) {
                     throw new SQLException("Local associado ao restaurante é nulo ou não tem ID.");
                 }
+                stmt.setInt(2, restaurante.getLocal().getIdLocal());
                 stmt.setDate(3, restaurante.getDatasql());
                 stmt.setInt(4, restaurante.getIdrestaurante());
 
